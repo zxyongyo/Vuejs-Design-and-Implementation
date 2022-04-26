@@ -1,0 +1,29 @@
+<body></body>
+
+<script>
+  const obj = {
+    tag: 'div',
+    children: [
+      { tag: 'span', children: 'hello world'}
+    ]
+  }
+
+  /** 递归将obj渲染为dom元素 */
+  function Render(obj, root) {
+    const el = document.createElement(obj.tag)
+    if (typeof obj.children === 'string') {
+      const text = document.createTextNode(obj.children)
+      el.appendChild(text)
+    } else if (obj.children) {
+      obj.children.forEach(child => {
+        // 递归调用Render
+        Render(child, el)
+      })
+    }
+
+    // 将元素添加到root
+    root.appendChild(el)
+  }
+
+  Render(obj, document.body)
+</script>

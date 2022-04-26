@@ -1,0 +1,50 @@
+<body></body>
+
+<script>
+  /**
+   * 渲染器
+   * @param {object} vnode 虚拟dom对象
+   * @param {HTMLElement} container 挂载点
+   */
+  function renderer(vnode, container) {
+    // 创建元素
+    const el = document.createElement(vnode.tag)
+    // 遍历vnode.props 将属性、事件添加到dom元素
+    for (const key in vnode.props) {
+      // 如果key已on开头 说明是事件
+      if (/^on/.test(key)) {
+        el.addEventListener(
+          key.substr(2).toLowerCase(), // onClick => click
+          vnode.props[key] // 事件处理函数
+        )
+      } else {
+        el[key] = vnode.props[key]
+      }
+    }
+
+    // 处理children
+    if (typeof vnode.children === 'string') {
+      // 如果是字符串 说明是文本节点 插入到el
+      const text = document.createTextNode(vnode.children)
+      el.appendChild(text)
+    } else if (Array.isArray(vnode.children)) {
+      // 递归渲染子节点 当前元素el作为挂载点
+      vnode.children.forEach(child => renderer(child, el))
+    }
+    // 将元素添加到挂在点下
+    container.appendChild(el)
+  }
+
+  const vnode = {
+    tag: 'div',
+    props: {
+      id: 'btn',
+      onClick: () => alert('hello')
+    },
+    children: [
+      {tag: 'span', props: {className: 'text'}, children: 'click me'}
+    ]
+  }
+
+  renderer(vnode, document.body)
+</script>
