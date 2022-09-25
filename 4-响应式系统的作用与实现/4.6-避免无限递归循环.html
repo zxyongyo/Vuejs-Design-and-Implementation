@@ -1,0 +1,86 @@
+<body></body>
+
+<script>
+  /* 当以下代码在 4.5的响应式系统中 执行时会引起栈溢出
+  ```
+    effect(() => obj.foo++)
+  ```
+  因为在这个副作用函数中既会读取obj.foo 又会 设置 obj.foo
+  当读取obj.foo 会触发 track 将该副作用函数收集到桶中, 接着将其加1再赋值给obj.foo,
+  这时会触发 trigger,把桶中的副作用函数取出并执行,但此时该副作用函数还在执行中,
+  没有执行完毕就要开始下一次执行,就会导致无限递归调用自己 */
+
+  /* 为解决这个问题,可以在 trigger 时增加守卫条件, 如果 trigger 触发执行的副作用函数
+  与当前正在执行的副作用函数相同,则不触发执行*/
+
+  let activeEffect
+  const effectStack = []
+
+  function effect(fn) {
+    const effectFn = () => {
+      cleanup(effectFn)
+      activeEffect = effectFn
+      effectStack.push(effectFn)
+      fn()
+      effectStack.pop()
+      activeEffect = effectStack[effectStack.length - 1]
+    }
+    effectFn.deps = []
+    effectFn()
+  }
+
+  function cleanup(effectFn) {
+    for (let i = 0; i < effectFn.deps.length; i++) {
+      const deps = effectFn.deps[i]
+      deps.delete(effectFn)
+    }
+    effectFn.deps.length = 0
+  }
+
+  const bucket = new WeakMap()
+  const data = { foo: 1 }
+
+  const obj = new Proxy(data, {
+    get(target, key) {
+      track(target, key)
+      return target[key]
+    },
+    set(target, key, newVal) {
+      target[key] = newVal
+      trigger(target, key)
+    }
+  })
+
+  function track(target, key) {
+    if (!activeEffect) return
+
+    let depsMap = bucket.get(target)
+    if (!depsMap) {
+      bucket.set(target, (depsMap = new Map()))
+    }
+
+    let deps = depsMap.get(key)
+    if (!deps) {
+      depsMap.set(key, (deps = new Set()))
+    }
+    deps.add(activeEffect)
+    activeEffect.deps.push(deps)
+  }
+
+  function trigger(target, key) {
+    const depsMap = bucket.get(target)
+    if (!depsMap) return
+    const effects = depsMap.get(key)
+
+    const effectsToRun = new Set()
+    effects && effects.forEach(effectFn => {
+      // 如果 trigger 触发执行的副作用函数和当前正在执行的副作用函数相同,则不触发执行
+      if (effectFn !== activeEffect) {
+        effectsToRun.add(effectFn)
+      }
+    })
+    effectsToRun && effectsToRun.forEach(fn => fn())
+  }
+
+  effect(() => obj.foo++)
+</script>

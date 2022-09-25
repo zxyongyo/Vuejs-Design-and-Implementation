@@ -1,0 +1,102 @@
+<body></body>
+
+<script>
+  /* 在4.3的例子中 当副作用函数包含分支切换, 会产生遗留的副作用函数
+  遗留的副作用函数会导致不必要的更新, 为了解决这个问题,可以在每次执行副作用函数前把它从所有与之关联的依赖集合中删除.
+  当副作用函数执行完毕后, 会重新建立联系 */
+
+  // 用一个全局变量保存被注册的副作用函数
+  let activeEffect
+  // effect 函数用于注册副作用函数
+  function effect(fn) {
+    const effectFn = () => {
+      // 调用 cleanup 函数完成清除工作 
+      cleanup(effectFn)
+      // 当effectFn 执行时 将其设置为当前激活的副作用函数
+      activeEffect = effectFn
+      fn()
+    }
+    // activeEffect.deps 用来存储所有与该副作用函数关联的依赖集合
+    effectFn.deps = []
+    // 执行副作用函数
+    effectFn()
+  }
+
+  function cleanup(effectFn) {
+    // 遍历 effectFn.deps 数组
+    for (let i = 0; i < effectFn.deps.length; i++) {
+      // deps 是依赖集合
+      const deps = effectFn.deps[i]
+      // 将 effectFn 从依赖集合中移除
+      // console.log(deps === bucket.get(data).get('text'))
+      deps.delete(effectFn)
+    }
+    // 重置 effectFn.deps 数组
+    effectFn.deps.length = 0
+  }
+
+  // 创建一个存储副作用函数的桶
+  const bucket = new WeakMap()
+  // 原始数据
+  const data = { ok: true, text: 'hello world' }
+
+  const obj = new Proxy(data, {
+    get(target, key) {
+      // 将副作用函数 activeEffect 添加到存储副作用函数的桶中
+      track(target, key)
+      return target[key]
+    },
+    set(target, key, newVal) {
+      target[key] = newVal
+      // 把副作用函数从桶中取出并执行
+      trigger(target, key)
+    }
+  })
+
+  // 在 get 拦截函数内调用 track 函数追踪变化
+  function track(target, key) {
+    // 没有 activeEffect 直接 return
+    if (!activeEffect) return
+
+    let depsMap = bucket.get(target)
+    if (!depsMap) {
+      bucket.set(target, (depsMap = new Map()))
+    }
+
+    let deps = depsMap.get(key)
+    if (!deps) {
+      depsMap.set(key, (deps = new Set()))
+    }
+    // 把当前激活的副作用函数添加到依赖集合 deps 中
+    deps.add(activeEffect)
+    // deps 就是与当前副作用函数存在联系的依赖集合
+    // 将其添加到 activeEffect.deps 中
+    activeEffect.deps.push(deps)
+  }
+
+  // 在 set 拦截函数中调用 trigger 函数触发变化
+  function trigger(target, key) {
+    const depsMap = bucket.get(target)
+    if (!depsMap) return
+    const effects = depsMap.get(key)
+
+    const effectsToRun = new Set(effects)
+    effectsToRun && effectsToRun.forEach(fn => fn())
+  }
+
+  effect(() => {
+    console.log('effectFn run')
+    document.body.innerText = obj.ok ? obj.text : 'not'
+  })
+
+  // console.log(bucket)
+
+  setTimeout(() => {
+    obj.ok = false
+  }, 1000);
+
+  setTimeout(() => {
+    // effect 不会执行
+    obj.text = 'hello vue3!!!'
+  }, 2500)
+</script>
